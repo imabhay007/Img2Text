@@ -1,0 +1,173 @@
+import re
+import os
+import csv
+import cv2
+import pandas as pd
+import pytesseract
+import numpy as np
+import tkinter as tk
+from tkinter import filedialog
+
+
+# Set the path for the Tesseract executable
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+# path for text file extracted
+text_path = "output_text"
+
+# Define a function to run your code
+
+
+def process_image():
+    # Get the filename of the selected image
+    filenames = filedialog.askopenfilenames(initialdir="/", title="Select Image",
+                                            filetypes=[("Bitmap Images", "*.bmp"), ("JPEG Images", "*.jpg;*.jpeg"), ("PNG Images", "*.png"), ("All Files", "*.*")])
+    if not filenames:
+        return
+
+    for filename in filenames:
+        # Read the image
+        image = cv2.imread(filename)
+
+        # Cropping of image
+        cropped_img = image[130:700, 250:1250]
+
+        # Converting image background to black
+        gray = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2GRAY)
+        ret, mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+        mask = cv2.bitwise_not(mask)
+        cropped_img[mask == 255] = (0, 0, 0)
+
+        # Blacking out battery icon
+        mask = np.ones(cropped_img.shape[:2], dtype=np.uint8)
+        x, y, w, h = 700, 53, 60, 550
+        mask[y:y + h, x:x + w] = 0
+        blackout_img = cv2.bitwise_and(cropped_img, cropped_img, mask=mask)
+
+        # Blacking out charging point icon
+        mask = np.ones(cropped_img.shape[:2], dtype=np.uint8)
+        x1, y1, w1, h1 = 90, 70, 65, 55
+        mask[y1:y1 + h1, x1:x1 + w1] = 0
+
+        x2, y2, w2, h2 = 90, 205, 65, 55
+        mask[y2:y2 + h2, x2:x2 + w2] = 0
+
+        x3, y3, w3, h3 = 90, 340, 65, 55
+        mask[y3:y3 + h3, x3:x3 + w3] = 0
+
+        x4, y4, w4, h4 = 90, 470, 65, 55
+        mask[y4:y4 + h4, x4:x4 + w4] = 0
+        final_img = cv2.bitwise_and(blackout_img, cropped_img, mask=mask)
+
+        # Save the output
+        cv2.imwrite('output_img/output1.bmp', final_img)
+
+        # Extracting text & writing to text file
+        text = pytesseract.image_to_string(final_img)
+
+        output_file = 'output1.txt'
+        with open(output_file, 'w', encoding='utf-8') as file:
+            file.write(text)
+
+        # Show a message box when the processing is complete
+        #tk.messagebox.showinfo("Complete", "Processing is complete. Output Image saved to output_img folder and Extracted text into output.txt.")
+        percent_pattern = r'\d{1,3}%'  # percent finder
+        arrival_time_pattern = r'\b\d{1,2}:\d{2}\s(?:AM|PM)\b'  # Time Finder
+        distance_pattern = r'\b\d+\s+mi\b'  # Distance Finder
+        # Required charging time extractor
+        req_charge_time_pattern = r"^\d{1,2}:\d{2}$"
+
+        # Open the file containing the text
+        with open('output1.txt', 'r') as file:
+            text = file.read()
+
+        # Adding all the elements to their respective lists
+        arrival_times = re.findall(arrival_time_pattern, text)
+        percentages = re.findall(percent_pattern, text)
+        req_charge_times = re.findall(
+            req_charge_time_pattern, text, re.MULTILINE)
+        distances = re.findall(distance_pattern, text)
+
+        if len(percentages) % 2 == 1:
+            percentages.insert(1, ' ')
+
+        # Reverse list Elements
+        arrival_times.reverse()
+        percentages.reverse()
+        req_charge_times.reverse()
+        distances.reverse()
+
+        # Check if no. of elements in req_charge_times are odd if so then append empty element to it
+        if len(req_charge_times) % 2 == 1:
+            req_charge_times.append(' ')
+
+        # Separating arrival and departure percentages into separate lists
+        arrival_charge_percentage = []
+        departure_charge_percentage = []
+        for i in range(len(percentages)):
+            if i % 2 == 0:
+                departure_charge_percentage.append(percentages[i])
+            else:
+                arrival_charge_percentage.append(percentages[i])
+
+        # Write the lists to a CSV file
+        file_path = 'output1.csv'
+        if os.path.exists(file_path):
+            pass
+        else:
+            with open(file_path, 'w', newline='') as file:
+                pass
+
+        file_name = file_path
+        # Check if the file is empty or not
+        is_empty = os.stat(file_name).st_size == 0
+        with open(file_path, 'a', newline='') as file:
+            writer = csv.writer(file)
+            if is_empty:
+                writer.writerow(["Arrival Time", "Distance", "Arrival Charge Percentage", "Departure Charge Percentage",
+                                 "Req Charge Time"])
+            limit = min(len(arrival_times), len(distances), len(arrival_charge_percentage),
+                        len(departure_charge_percentage),
+                        len(req_charge_times))
+            for i in range(limit):
+                writer.writerow(
+                    [arrival_times[i], distances[i], arrival_charge_percentage[i], departure_charge_percentage[i],
+                     req_charge_times[i]])
+
+        #print("CSV file written successfully!")
+
+        ##### REMOVING DUPLICATE ELEMENTS FROM FILE  ######
+
+        df = pd.read_csv(file_path)
+        # Remove duplicate rows based on all columns
+        df.drop_duplicates(inplace=True)
+        df.to_csv('cleaned_output_file1.csv', index=False)
+
+        # Show a message box when the processing is complete
+    tk.messagebox.showinfo("Complete", "Successfully written into CSV File ")
+
+# def write_csv():
+#     # file_name = filedialog.askopenfilename(initialdir="/", title="Select CSV",
+#     #                                       filetypes=[("CSV files", "*.csv"), ("All Files", "*.*")])
+#     # if not file_name:
+#     #     return
+#
+#         # Define the regex pattern for matching percentages
+
+
+# Create the main window
+root = tk.Tk()
+root.title("Image 2 Text Processor")
+
+# Add a button to select an image
+select_button = tk.Button(root, text="Select Images", command=process_image,
+                          bg="blue", fg="white", font=("Helvetica", 16))
+select_button.pack(padx=10, pady=100)
+
+# select_button = tk.Button(root, text="Write CSV", command=write_csv, bg="blue", fg="white", font=("Helvetica", 16))
+# select_button.pack(padx=10, pady=10)
+
+
+# Start the main event loop
+root.geometry("400x300+300+200")
+root.mainloop()
